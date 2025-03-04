@@ -1,7 +1,7 @@
 import bodyParser from "body-parser";
 import express from "express";
 import { BASE_NODE_PORT } from "../config";
-import { Value } from "../types";
+import { Value, NodeState } from "../types";
 
 export async function node(
   nodeId: number, // the ID of the node
@@ -16,9 +16,14 @@ export async function node(
   node.use(express.json());
   node.use(bodyParser.json());
 
-  // TODO implement this
   // this route allows retrieving the current status of the node
-  // node.get("/status", (req, res) => {});
+  node.get("/status", (req, res) => {
+    if(isFaulty){
+      res.status(500).send('faulty');
+    } else {
+      res.status(200).send('live');
+    }
+  });
 
   // TODO implement this
   // this route allows the node to receive messages from other nodes
@@ -34,7 +39,15 @@ export async function node(
 
   // TODO implement this
   // get the current state of a node
-  // node.get("/getState", (req, res) => {});
+  node.get("/getState", (req, res) => {
+    var state: NodeState;
+    if(isFaulty) {
+      state = {killed: false, x: null, decided: null, k: null};
+    } else {
+      state = {killed: false, x: "?", decided: false, k: 0};
+    }
+    res.json(state);
+  });
 
   // start the server
   const server = node.listen(BASE_NODE_PORT + nodeId, async () => {
