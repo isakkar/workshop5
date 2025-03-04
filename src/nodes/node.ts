@@ -86,8 +86,8 @@ export async function node(
             currentValue = 0;
           } else if(count[1] >= N/2){
             currentValue = 1;
-          } else {   // otherwise, set it to null
-            currentValue = null;
+          } else {   // otherwise, set it to unknown
+            currentValue = "?";
           }
 
           // send phase 2 message to other nodes
@@ -103,7 +103,29 @@ export async function node(
           }
 
         } else if(currentPhase === 2){
-
+          let phaseMessages: Message[] = getMessages(currentRound,currentPhase) // get the relevant messages
+          let count: Record<Value, number> = {0:0, 1:0, "?":0}; // count the number of each value
+          for(let i = 0; i < n; i++){
+            let v = getValue(phaseMessages[i]);
+            if(v != null) {
+              count[v] += 1;
+            }
+          }
+          if(count[0] > 2*F){          // if enough messages have same value, DECIDE on it
+            currentValue = 0;
+            decided = true;
+          } else if(count[1] > 2*F){
+            currentValue = 1;
+            decided = true;
+          } else if(count[0] > F+1) {  // otherwise, if enough (less) messages have same value, set node's value to it
+            currentValue = 0;
+          } else if(count[1] > F+1) {
+            currentValue = 1;
+          } else {                     // set node's value to a random value
+            currentValue = Math.round(Math.random()) as Value;
+          }
+          currentRound += 1;
+          currentPhase = 1;
         } else {
           console.log("Error: phase number");
         }
@@ -120,7 +142,7 @@ export async function node(
     }
     for(let i=0; i<N; i++){
       if(i !== nodeId){
-        await fetch(`http://localhost:${BASE_NODE_PORT+i}/message`, {
+        fetch(`http://localhost:${BASE_NODE_PORT+i}/message`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({p:currentPhase, k:currentRound, x:currentValue, nodeId:nodeId})
