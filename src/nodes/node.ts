@@ -16,6 +16,11 @@ export async function node(
   node.use(express.json());
   node.use(bodyParser.json());
 
+  let messages: {[round: number]: Value[]}; // the messages received each round from other nodes
+  let currentValue: Value = initialValue; // current value of the node
+  let currentRound: number = 1; // current round
+  let decided: boolean = false; // if the node reached finality
+
   // this route allows retrieving the current status of the node
   node.get("/status", (req, res) => {
     if(isFaulty){
@@ -25,9 +30,15 @@ export async function node(
     }
   });
 
-  // TODO implement this
   // this route allows the node to receive messages from other nodes
-  // node.post("/message", (req, res) => {});
+  node.post("/message", (req, res) => {
+    const { k, v } = req.body; // receive round and value
+    if(!messages[k]){ // if list of messages received doesn't exist yet, create it
+      messages[k] = [];
+    }
+    messages[k].push(v); // add value to the list
+    res.status(200).send("received"); // respond
+  });
 
   // TODO implement this
   // this route is used to start the consensus algorithm
@@ -37,14 +48,13 @@ export async function node(
   // this route is used to stop the consensus algorithm
   // node.get("/stop", async (req, res) => {});
 
-  // TODO implement this
   // get the current state of a node
   node.get("/getState", (req, res) => {
     var state: NodeState;
     if(isFaulty) {
       state = {killed: false, x: null, decided: null, k: null};
     } else {
-      state = {killed: false, x: "?", decided: false, k: 0};
+      state = {killed: false, x: currentValue, decided: decided, k: currentRound};
     }
     res.json(state);
   });
