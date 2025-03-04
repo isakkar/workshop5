@@ -25,7 +25,7 @@ export async function node(
   node.use(bodyParser.json());
 
   let messages: Record<number, Record<number, Message[]>>; // the messages received each round from other nodes
-  let currentValue: Value = initialValue; // current value of the node
+  let currentValue: Value | null = initialValue; // current value of the node
   let currentRound: number = 1; // current round
   let currentPhase: 1 | 2 = 1 // current phase (1 or 2)
   let decided: boolean = false; // if the node reached finality
@@ -69,8 +69,38 @@ export async function node(
       res.status(200).send("received"); // respond
 
       if(getMessagesLen(currentRound,currentPhase) >= N-F){ // if node got enough messages this phase and round
+        let n = getMessagesLen(currentRound,currentPhase);
+
         if(currentPhase === 1){
           let phaseMessages: Message[] = getMessages(currentRound,currentPhase) // get the relevant messages
+          let count: Record<Value, number> = {0:0, 1:0, "?":0}; // count the number of each value
+          for(let i = 0; i < n; i++){
+            let v = getValue(phaseMessages[i]);
+            if(v != null) {
+              count[v] += 1;
+            }
+          }
+
+          // if there is a majority, set node's value to it
+          if(count[0] >= N/2){
+            currentValue = 0;
+          } else if(count[1] >= N/2){
+            currentValue = 1;
+          } else {   // otherwise, set it to null
+            currentValue = null;
+          }
+
+          // send phase 2 message to other nodes
+          currentPhase = 2; // change phase
+          for(let i=0; i<N; i++){
+            if(i !== nodeId){
+              fetch(`http://localhost:${BASE_NODE_PORT+i}/message`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({p:currentPhase, k:currentRound, x:currentValue, nodeId:nodeId})
+              });
+            }
+          }
 
         } else if(currentPhase === 2){
 
@@ -93,7 +123,7 @@ export async function node(
         await fetch(`http://localhost:${BASE_NODE_PORT+i}/message`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({p:currentPhase, k:currentRound, x:currentValue, nodeId:i})
+          body: JSON.stringify({p:currentPhase, k:currentRound, x:currentValue, nodeId:nodeId})
         });
       }
     }
