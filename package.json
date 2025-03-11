@@ -4,7 +4,7 @@
   "description": "Simple Tor network implemenation",
   "main": "src/index.ts",
   "scripts": {
-    "test": "jest --runInBand",
+    "test": "jest --runInBand --silent=false",
     "start": "ts-node src/start.ts"
   },
   "author": "Baptiste Florentin",

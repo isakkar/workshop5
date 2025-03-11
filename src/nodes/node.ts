@@ -2,7 +2,7 @@ import bodyParser from "body-parser";
 import express from "express";
 import { BASE_NODE_PORT } from "../config";
 import { Value, NodeState } from "../types";
-import {delay} from "@/src/utils";
+import {delay} from "../utils";
 
 type Message = {
   p: 1 | 2
@@ -24,11 +24,12 @@ export async function node(
   node.use(express.json());
   node.use(bodyParser.json());
 
-  let messages: Record<number, Record<number, Message[]>>; // the messages received each round from other nodes
+  let messages: Record<number, Record<number, Message[]>> = {}; // the messages received each round from other nodes
   let currentValue: Value | null = initialValue; // current value of the node
   let currentRound: number = 1; // current round
   let currentPhase: 1 | 2 = 1 // current phase (1 or 2)
   let decided: boolean = false; // if the node reached finality
+  let killed: boolean = false; // if the node was stopped
 
   function storeMessage(message: Message): void {
     const { k, p } = message
@@ -52,6 +53,23 @@ export async function node(
     return m.x
   }
 
+  async function sendToAllNodes(): Promise<void> {
+    const requests = [];
+    for (let i = 0; i < N; i++) {
+      if (i !== nodeId && !isFaulty) {
+        requests.push(
+            fetch(`http://localhost:${BASE_NODE_PORT + i}/message`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ p: currentPhase, k: currentRound, x: currentValue, nodeId: nodeId }),
+            }).catch((err) => console.error(`Failed to send message to node ${i}:`, err))
+        );
+      }
+    }
+    await Promise.all(requests);
+  }
+
+
   // this route allows retrieving the current status of the node
   node.get("/status", (req, res) => {
     if(isFaulty){
@@ -62,76 +80,78 @@ export async function node(
   });
 
   // this route allows the node to receive messages from other nodes
-  node.post("/message", (req, res) => {
+  node.post("/message", async (req, res) => {
+    if (killed || isFaulty) {
+      res.status(200).send("Node is faulty or killed");
+      return;
+    }
+
+    console.log(nodeId,"called /message");
     const { p, k } = req.body;
-    if(currentRound == k && currentPhase == p) { // if same phase & round
-      storeMessage(req.body); // add message
-      res.status(200).send("received"); // respond
+    if (k >= currentRound && p >= currentPhase) {  // if not in round/phase already done
+      storeMessage(req.body);                      // add message
+      console.log(nodeId, "Messages stored for round", k, "phase", p, ":", getMessagesLen(k, p));
+    }
+    if(getMessagesLen(k,p) >= N-F-1){ // if node got enough messages this phase and round
+      console.log(nodeId,"Got enough messages");
+      let n = getMessagesLen(k,p);
 
-      if(getMessagesLen(currentRound,currentPhase) >= N-F){ // if node got enough messages this phase and round
-        let n = getMessagesLen(currentRound,currentPhase);
-
-        if(currentPhase === 1){
-          let phaseMessages: Message[] = getMessages(currentRound,currentPhase) // get the relevant messages
-          let count: Record<Value, number> = {0:0, 1:0, "?":0}; // count the number of each value
-          for(let i = 0; i < n; i++){
-            let v = getValue(phaseMessages[i]);
-            if(v != null) {
-              count[v] += 1;
-            }
+      if(p === 1){
+        console.log(nodeId,"Phase 1");
+        let phaseMessages: Message[] = getMessages(k,p) // get the relevant messages
+        let count: Record<Value, number> = {0:0, 1:0, "?":0}; // count the number of each value
+        for(let i = 0; i < n; i++){
+          let v = getValue(phaseMessages[i]);
+          if(v != null) {
+            count[v] += 1;
           }
-
-          // if there is a majority, set node's value to it
-          if(count[0] >= N/2){
-            currentValue = 0;
-          } else if(count[1] >= N/2){
-            currentValue = 1;
-          } else {   // otherwise, set it to unknown
-            currentValue = "?";
-          }
-
-          // send phase 2 message to other nodes
-          currentPhase = 2; // change phase
-          for(let i=0; i<N; i++){
-            if(i !== nodeId){
-              fetch(`http://localhost:${BASE_NODE_PORT+i}/message`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({p:currentPhase, k:currentRound, x:currentValue, nodeId:nodeId})
-              });
-            }
-          }
-
-        } else if(currentPhase === 2){
-          let phaseMessages: Message[] = getMessages(currentRound,currentPhase) // get the relevant messages
-          let count: Record<Value, number> = {0:0, 1:0, "?":0}; // count the number of each value
-          for(let i = 0; i < n; i++){
-            let v = getValue(phaseMessages[i]);
-            if(v != null) {
-              count[v] += 1;
-            }
-          }
-          if(count[0] > 2*F){          // if enough messages have same value, DECIDE on it
-            currentValue = 0;
-            decided = true;
-          } else if(count[1] > 2*F){
-            currentValue = 1;
-            decided = true;
-          } else if(count[0] > F+1) {  // otherwise, if enough (less) messages have same value, set node's value to it
-            currentValue = 0;
-          } else if(count[1] > F+1) {
-            currentValue = 1;
-          } else {                     // set node's value to a random value
-            currentValue = Math.round(Math.random()) as Value;
-          }
-          currentRound += 1;
-          currentPhase = 1;
-        } else {
-          console.log("Error: phase number");
         }
+
+        // if there is a majority, set node's value to it
+        if(count[0] >= N/2){
+          currentValue = 0;
+        } else if(count[1] >= N/2){
+          currentValue = 1;
+        } else {   // otherwise, set it to unknown
+          currentValue = "?";
+        }
+
+        // send phase 2 message to other nodes
+        currentPhase = 2; // change phase
+        await sendToAllNodes();
+        res.status(200).send("Sent to nodes");
+
+      } else if(p === 2){
+        console.log(nodeId,"Phase 2");
+        let phaseMessages: Message[] = getMessages(k,p) // get the relevant messages
+        let count: Record<Value, number> = {0:0, 1:0, "?":0}; // count the number of each value
+        for(let i = 0; i < n; i++){
+          let v = getValue(phaseMessages[i]);
+          if(v != null) {
+            count[v] += 1;
+          }
+        }
+        console.log(nodeId,"Checking for value");
+        if(count[0] > 2 * F) {          // if enough messages have same value, DECIDE on it
+          currentValue = 0;
+          decided = true;
+        } else if(count[1] > 2 * F) {
+          currentValue = 1;
+          decided = true;
+        } else if(count[0] > F) {       // otherwise, if enough (less) messages have same value, set node's value to it
+          currentValue = 0;
+        } else if(count[1] > F) {
+          currentValue = 1;
+        } else {                        // set node's value to a random value, either 0 or 1
+          currentValue = Math.round(Math.random()) as Value;
+        }
+        console.log(nodeId,"Value set");
+        currentRound += 1;
+        currentPhase = 1;
+        console.log(nodeId,"Sending to all nodes...");
+        await sendToAllNodes();
+        res.status(200).send("Sent to nodes");
       }
-    } else {
-      res.send("wrong phase");
     }
   });
 
@@ -140,20 +160,15 @@ export async function node(
     while(!nodesAreReady()){
       await delay(100);
     }
-    for(let i=0; i<N; i++){
-      if(i !== nodeId){
-        fetch(`http://localhost:${BASE_NODE_PORT+i}/message`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({p:currentPhase, k:currentRound, x:currentValue, nodeId:nodeId})
-        });
-      }
-    }
+    sendToAllNodes();
+    res.status(200).send("Sent to nodes");
   });
 
-  // TODO implement this
   // this route is used to stop the consensus algorithm
-  // node.get("/stop", async (req, res) => {});
+  node.get("/stop", async (req, res) => {
+    killed = true;
+    res.send("Node stopped");
+  });
 
   // get the current state of a node
   node.get("/getState", (req, res) => {
