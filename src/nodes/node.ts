@@ -58,7 +58,6 @@ export async function node(
     const requests = [];
     console.log(nodeId, `Sending phase ${currentPhase} messages for round ${currentRound}`);
     for (let i = 0; i < N; i++) {
-      if (i !== nodeId && !isFaulty) {
         requests.push(
             fetch(`http://localhost:${BASE_NODE_PORT + i}/message`, {
               method: "POST",
@@ -66,7 +65,6 @@ export async function node(
               body: JSON.stringify({ p: currentPhase, k: currentRound, x: currentValue, nodeId: nodeId }),
             }).catch((err) => console.error(`Failed to send message to node ${i}:`, err))
         );
-      }
     }
     await Promise.all(requests);
   }
@@ -94,7 +92,7 @@ export async function node(
       storeMessage(req.body);                      // add message
       console.log(nodeId, "Messages stored for round", k, "phase", p, ":", getMessagesLen(k, p));
     }
-    if(getMessagesLen(k,p) >= N-F-1){ // if node got enough messages for phase and round
+    if(getMessagesLen(k,p) >= N-F){ // if node got enough messages for phase and round
       console.log(nodeId,"Got enough messages");
       let n = getMessagesLen(k,p);
 
