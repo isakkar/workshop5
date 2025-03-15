@@ -33,6 +33,7 @@ export async function node(
 
   function storeMessage(message: Message): void {
     const { k, p } = message
+    console.log(nodeId,"Phase",message.p,"Message from node",message.nodeId);
     if(!messages[k]) messages[k] = {[1]: [], [2]: []} // if dict for round k doesn't exist, create it
     // Check if the node ID is not already in the array before adding the message
     const nodeIdExists = messages[k][p].some(msg => msg.nodeId === message.nodeId);
@@ -55,6 +56,7 @@ export async function node(
 
   async function sendToAllNodes(): Promise<void> {
     const requests = [];
+    console.log(nodeId, `Sending phase ${currentPhase} messages for round ${currentRound}`);
     for (let i = 0; i < N; i++) {
       if (i !== nodeId && !isFaulty) {
         requests.push(
@@ -92,7 +94,7 @@ export async function node(
       storeMessage(req.body);                      // add message
       console.log(nodeId, "Messages stored for round", k, "phase", p, ":", getMessagesLen(k, p));
     }
-    if(getMessagesLen(k,p) >= N-F-1){ // if node got enough messages this phase and round
+    if(getMessagesLen(k,p) >= N-F-1){ // if node got enough messages for phase and round
       console.log(nodeId,"Got enough messages");
       let n = getMessagesLen(k,p);
 
