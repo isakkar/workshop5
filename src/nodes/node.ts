@@ -106,6 +106,7 @@ export async function node(
             count[v] += 1;
           }
         }
+        console.log(nodeId,"Phase 1 Counted 0:",count[0],"/ Counted 1:",count[1],"/ Counted ?:",count["?"]);
 
         // if there is a majority, set node's value to it
         if(count[0] >= N/2){
@@ -115,6 +116,7 @@ export async function node(
         } else {   // otherwise, set it to unknown
           currentValue = "?";
         }
+        console.log(nodeId,"using value",currentValue,"after phase 1 round",currentRound);
 
         // send phase 2 message to other nodes
         currentPhase = 2; // change phase
@@ -131,22 +133,18 @@ export async function node(
             count[v] += 1;
           }
         }
-        console.log(nodeId,"Counted 0:",count[0],"/ Counted 1:",count[1],"/ Counted ?:",count["?"]);
+        console.log(nodeId,"Phase 2 Counted 0:",count[0],"/ Counted 1:",count[1],"/ Counted ?:",count["?"]);
         console.log(nodeId,"Checking for value");
-        if(count[0] > 2 * F) {          // if enough messages have same value, DECIDE on it
+        if(count[0] > F) {          // if enough messages have same value, DECIDE on it
           currentValue = 0;
           decided = true;
-        } else if(count[1] > 2 * F) {
-          currentValue = 1;
-          decided = true;
-        } else if(count[0] > F) {       // otherwise, if enough (less) messages have same value, set node's value to it
-          currentValue = 0;
         } else if(count[1] > F) {
           currentValue = 1;
-        } else {                        // set node's value to a random value, either 0 or 1
+          decided = true;
+        } else {                    // otherwise, set node's value to a random value, either 0 or 1
           currentValue = Math.round(Math.random()) as Value;
         }
-        console.log(nodeId,"Value set");
+        console.log(nodeId,"using value",currentValue,"after phase 2 round",currentRound);
         currentRound += 1;
         currentPhase = 1;
         console.log(nodeId,"Sending to all nodes...");
@@ -172,6 +170,7 @@ export async function node(
   // this route is used to stop the consensus algorithm
   node.get("/stop", async (req, res) => {
     killed = true;
+    console.log("Node",nodeId,"killed");
     res.send("Node stopped");
   });
 
