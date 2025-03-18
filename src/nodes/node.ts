@@ -47,7 +47,7 @@ export async function node(
   }
 
   function getMessagesLen(k: number, phase: 1 | 2): number {
-    return messages[k][phase].length
+    return messages[k]?.[phase]?.length ?? 0;  // ensure it's a valid number
   }
 
   function getValue(m:Message): Value | null {
@@ -63,7 +63,7 @@ export async function node(
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ p: currentPhase, k: currentRound, x: currentValue, nodeId: nodeId }),
-            }).catch((err) => console.error(`Failed to send message to node ${i}:`, err))
+            })
         );
     }
     await Promise.all(requests);
