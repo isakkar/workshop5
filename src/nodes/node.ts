@@ -131,6 +131,7 @@ export async function node(
             count[v] += 1;
           }
         }
+        console.log(nodeId,"Counted 0:",count[0],"/ Counted 1:",count[1],"/ Counted ?:",count["?"]);
         console.log(nodeId,"Checking for value");
         if(count[0] > 2 * F) {          // if enough messages have same value, DECIDE on it
           currentValue = 0;
@@ -160,8 +161,12 @@ export async function node(
     while(!nodesAreReady()){
       await delay(100);
     }
-    sendToAllNodes();
-    res.status(200).send("Sent to nodes");
+    if(isFaulty){
+      res.status(200).send("Node is faulty");
+    } else {
+      sendToAllNodes();
+      res.status(200).send("Sent to nodes");
+    }
   });
 
   // this route is used to stop the consensus algorithm
